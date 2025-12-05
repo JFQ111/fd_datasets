@@ -20,6 +20,7 @@ class JNUBearingDataset(Dataset):
             args: 命令行参数对象
             flag: 'train', 'val', 'test'
         """
+        # args.stride = 128
         self.args = args
         self.args.sampling_rate = 50000  # JNU数据集默认采样率
         self.flag = flag

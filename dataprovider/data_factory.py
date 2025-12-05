@@ -7,6 +7,7 @@ import pickle
 import hashlib
 import warnings
 from pathlib import Path
+from sympy import im
 from torch.utils.data import DataLoader, ConcatDataset, WeightedRandomSampler
 import torch
 
@@ -14,10 +15,31 @@ from .cwru_dataset import CWRUBearingDataset
 from .pu_dataset import PUBearingDataset
 from .jnu_dataset import JNUBearingDataset
 from .mfpt_dataset import MFPTBearingDataset
+from .hust_dataset import HUSTBearingDataset
+from .hustv_dataset import HUSTVBearingDataset
 
 warnings.filterwarnings('ignore')
 
-
+class DomainLabeledDataset:
+    def __init__(self, dataset, domain_name):
+        self.dataset = dataset
+        self.domain_name = domain_name
+    
+    def __getitem__(self, idx):
+        sample = self.dataset[idx]
+        if isinstance(sample, dict):
+            sample['domain'] = self.domain_name
+        else:
+            # 如果原始返回格式是tuple，转换为dict
+            sample = {
+                'data': sample[0] if len(sample) > 0 else None,
+                'label': sample[1] if len(sample) > 1 else None,
+                'domain': self.domain_name
+            }
+        return sample
+    
+    def __len__(self):
+        return len(self.dataset)
 def get_cache_key(args):
     """
     根据所有相关参数生成唯一的缓存键
@@ -44,6 +66,16 @@ def get_cache_key(args):
         'pu_workloads': sorted(args.pu_workloads) if hasattr(args, 'pu_workloads') else None,
         'pu_task_type': args.pu_task_type if hasattr(args, 'pu_task_type') else None,
         'pu_signal_type': args.pu_signal_type if hasattr(args, 'pu_signal_type') else None,
+
+        # HUST参数
+        'hust_workloads': sorted(args.hust_workloads) if hasattr(args, 'hust_workloads') else None,
+        'hust_task_type': args.hust_task_type if hasattr(args, 'hust_task_type') else None,
+        'hust_signal_type': args.hust_signal_type if hasattr(args, 'hust_signal_type') else None,
+
+        # HUSTV参数
+        'hustv_bearings': sorted(args.hustv_bearings) if hasattr(args, 'hustv_bearings') else None,
+        'hustv_workloads': sorted(args.hustv_workloads) if hasattr(args, 'hustv_workloads') else None,
+        'hustv_task_type': args.hustv_task_type if hasattr(args, 'hustv_task_type') else None,
 
         # JNU参数
         'jnu_workloads': sorted(args.jnu_workloads) if hasattr(args, 'jnu_workloads') else None,
@@ -141,6 +173,8 @@ def create_cached_datasets(args, cache_dir='./datasets/cache'):
         'JNU': JNUBearingDataset,
         'PU': PUBearingDataset,
         'MFPT': MFPTBearingDataset,
+        'HUST': HUSTBearingDataset,
+        'HUSTV': HUSTVBearingDataset
     }
 
     # 处理数据集参数
@@ -192,6 +226,11 @@ def create_cached_datasets(args, cache_dir='./datasets/cache'):
                 val_ds = dataset_class(args, flag='val')
                 test_ds = dataset_class(args, flag='test')
 
+                # 为每个数据集中的样本添加域标签
+                # 使用包装器添加域标签
+                train_ds = DomainLabeledDataset(train_ds, dataset_name)
+                val_ds = DomainLabeledDataset(val_ds, dataset_name)
+                test_ds = DomainLabeledDataset(test_ds, dataset_name)
                 train_datasets.append(train_ds)
                 val_datasets.append(val_ds)
                 test_datasets.append(test_ds)
@@ -225,7 +264,7 @@ def create_cached_datasets(args, cache_dir='./datasets/cache'):
 
     # 创建加权采样器（如果需要）
     weighted_sampler = None
-    if hasattr(args, 'dataset_weights') and args.dataset_weights != 'None':
+    if hasattr(args, 'dataset_weights') and args.dataset_weights is not None and args.dataset_weights != 'None':
         print("Creating weighted sampler for training...")
 
         # 解析权重字符串
@@ -350,7 +389,7 @@ def create_dataloaders(args, cache_dir='./datasets/cache'):
         shuffle=False,
         num_workers=num_workers,
         pin_memory=pin_memory,
-        drop_last=False
+        drop_last=drop_last
     )
 
     test_loader = DataLoader(
@@ -402,4 +441,3 @@ def clear_cache(cache_dir='./datasets/cache', pattern=None):
             print(f"  Failed to delete {cache_file.name}: {str(e)}")
 
     print("Cache cleanup completed")
-
