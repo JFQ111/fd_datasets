@@ -5,6 +5,30 @@ description: 轴承数据集加载器范例
 '''
 from dataprovider import create_dataloaders
 import argparse
+import torch
+
+
+def unpack_batch(batch):
+    """Handle both dict (with domain) and tuple batch formats."""
+    if isinstance(batch, dict):
+        return batch.get('data'), batch.get('label'), batch.get('domain')
+    if isinstance(batch, (list, tuple)) and len(batch) >= 2:
+        return batch[0], batch[1], None
+    raise TypeError(f"Unsupported batch type: {type(batch)}")
+
+
+def format_domain(domain):
+    """Format domain field for readable logging."""
+    if domain is None:
+        return 'N/A'
+    if torch.is_tensor(domain):
+        values = domain.detach().view(-1).tolist()
+        unique_domains = sorted(set(str(v) for v in values))
+    elif isinstance(domain, (list, tuple)):
+        unique_domains = sorted(set(str(v) for v in domain))
+    else:
+        unique_domains = [str(domain)]
+    return ', '.join(unique_domains)
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
@@ -128,8 +152,10 @@ if __name__ == '__main__':
 
 
     # 测试数据加载
-    for batch_idx, (data, labels) in enumerate(train_loader):
-        print(f"Batch {batch_idx}: data shape = {data.shape}, labels shape = {labels.shape}")
+    for batch_idx, batch in enumerate(train_loader):
+        data, labels, domain = unpack_batch(batch)
+        domain_info = format_domain(domain)
+        print(f"Batch {batch_idx}: data shape = {data.shape}, labels shape = {labels.shape}, domain(s) = {domain_info}")
         print(f"Label range: {labels.min().item()} - {labels.max().item()}")
         if batch_idx >= 5:  # 只测试几个batch
             break

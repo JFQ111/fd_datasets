@@ -6,6 +6,30 @@ description: HUST轴承数据集加载器使用范例
 from dataprovider import create_dataloaders
 import argparse
 import numpy as np
+import torch
+
+
+def unpack_batch(batch):
+    """Handle both dict (with domain) and tuple batch formats."""
+    if isinstance(batch, dict):
+        return batch.get('data'), batch.get('label'), batch.get('domain')
+    if isinstance(batch, (list, tuple)) and len(batch) >= 2:
+        return batch[0], batch[1], None
+    raise TypeError(f"Unsupported batch type: {type(batch)}")
+
+
+def format_domain(domain):
+    """Format domain field for readable logging."""
+    if domain is None:
+        return 'N/A'
+    if torch.is_tensor(domain):
+        values = domain.detach().view(-1).tolist()
+        unique_domains = sorted(set(str(v) for v in values))
+    elif isinstance(domain, (list, tuple)):
+        unique_domains = sorted(set(str(v) for v in domain))
+    else:
+        unique_domains = [str(domain)]
+    return ', '.join(unique_domains)
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
@@ -114,8 +138,10 @@ if __name__ == '__main__':
 
         # 测试数据加载
         print("=== Testing Data Loading ===")
-        for batch_idx, (data, labels) in enumerate(train_loader):
-            print(f"Batch {batch_idx}: data shape = {data.shape}, labels shape = {labels.shape}")
+        for batch_idx, batch in enumerate(train_loader):
+            data, labels, domain = unpack_batch(batch)
+            domain_info = format_domain(domain)
+            print(f"Batch {batch_idx}: data shape = {data.shape}, labels shape = {labels.shape}, domain(s) = {domain_info}")
             print(f"Label range: {labels.min().item()} - {labels.max().item()}")
             print(f"Unique labels in batch: {sorted(labels.unique().tolist())}")
             
@@ -123,13 +149,16 @@ if __name__ == '__main__':
                 break
                 
         print("\n=== Sample Data Statistics ===")
-        sample_batch_data, sample_batch_labels = next(iter(train_loader))
+        sample_batch = next(iter(train_loader))
+        sample_batch_data, sample_batch_labels, sample_batch_domain = unpack_batch(sample_batch)
         print(f"Sample data - Min: {sample_batch_data.min():.6f}, Max: {sample_batch_data.max():.6f}")
         print(f"Sample data - Mean: {sample_batch_data.mean():.6f}, Std: {sample_batch_data.std():.6f}")
+        print(f"Sample domain(s): {format_domain(sample_batch_domain)}")
         
         # 打印类别分布
         all_labels = []
-        for _, labels in train_loader:
+        for batch in train_loader:
+            _, labels, _ = unpack_batch(batch)
             all_labels.extend(labels.tolist())
         
         unique_labels, counts = np.unique(all_labels, return_counts=True)
